@@ -1,0 +1,27 @@
+ -5step by step 
+cd E:\projects\syncdir
+go mod init syncdir
+
+保存したらビルド：
+go build -o syncdir.exe
+
+
+“安全第一”ドライランをやってみる
+.\syncdir.exe cp -r --dry-run "E:\dotinstall" "C:\Users\user1\dotinstall"
+
+本番コピー（差分だけ）
+.\syncdir.exe cp -r "E:\dotinstall" "C:\Users\user1\dotinstall"
+
+
+完全ミラー（MECE的に一致：余分は削除）
+# まずはドライランで確認
+.\syncdir.exe cp -r --mirror --dry-run "E:\dotinstall" "C:\Users\user1\dotinstall"
+
+# 問題なければ本実行
+.\syncdir.exe cp -r --mirror "E:\dotinstall" "C:\Users\user1\dotinstall"
+
+# 除外や詳細ログ
+# .git と *.tmp を除外、ログ多め
+]
+
+.\syncdir.exe cp -r --exclude ".git" --exclude "*.tmp" --verbose "E:\dotinstall" "C:\Users\user1\dotinstall]
