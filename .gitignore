@@ -43,3 +43,7 @@ desktop.ini
 
 # GitHub Actions / CI temp artifacts
 /dist/
+
+coverage
+coverage.out
+coverage.html
