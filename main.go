@@ -24,11 +24,17 @@ Highlights:
 - Proper exit codes, stderr usage, and consistent usage printing
 */
 
+var (
+	exitFn           = func(code int) { os.Exit(code) }
+	stderr io.Writer = os.Stderr // ★ io.Writer にする（重要）
+)
+
+func printErr(s string) { _, _ = fmt.Fprint(stderr, s) }
+
 const (
 	appName    = "syncdir"
-	appVersion = "0.2.0" // bump as you publish to GitHub
+	appVersion = "0.2.0"
 
-	// Exit codes (loosely inspired by sysexits and common CLI conventions)
 	exitOK           = 0
 	exitUsage        = 2
 	exitRuntimeError = 1
@@ -76,7 +82,7 @@ See:
 }
 
 func cpUsage() string {
-	return fmt.Sprintf(`%s %s - copy/sync
+	return fmt.Sprintf(`%s cp - copy/sync
 
 Usage:
   %s cp -r [--mirror] [--dry-run] [--exclude PATTERN ...] [--verbose] [--checksum] SRC DST
@@ -94,7 +100,7 @@ Examples:
   %s cp -r "E:\dotinstall" "C:\Users\ckklu\dotinstall"
   %s cp -r --mirror "E:\dotinstall" "C:\Users\ckklu\dotinstall"
   %s cp -r --dry-run --exclude ".git" --exclude "*.tmp" "E:\src" "E:\dst"
-`, appName, "cp", appName, appName, appName, appName)
+`, appName, appName, appName, appName, appName)
 }
 
 /* =========================
@@ -102,21 +108,13 @@ Examples:
 ========================= */
 
 func main() {
-	// global flags
-	var (
-		showHelp    bool
-		showVersion bool
-	)
-
-	// We manually parse global flags to keep subcommand UX clean
 	if len(os.Args) < 2 {
 		printErr(globalUsage())
-		os.Exit(exitUsage)
+		exitFn(exitUsage)
 	}
 
 	switch os.Args[1] {
 	case "-h", "--help", "help":
-		// `syncdir help` or `syncdir --help`
 		if len(os.Args) >= 3 {
 			switch os.Args[2] {
 			case "cp":
@@ -125,40 +123,34 @@ func main() {
 				printErr(globalUsage())
 				printErr(fmt.Sprintf("Unknown topic for help: %q\n", os.Args[2]))
 			}
-			os.Exit(exitUsage)
+			exitFn(exitUsage)
 		}
 		printErr(globalUsage())
-		os.Exit(exitUsage)
+		exitFn(exitUsage)
 
 	case "--version", "version":
 		fmt.Printf("%s %s (%s/%s)\n", appName, appVersion, runtime.GOOS, runtime.GOARCH)
-		os.Exit(exitOK)
+		exitFn(exitOK)
 
 	case "cp":
-		runCp(os.Args[2:]) // cp has its own FlagSet
-		os.Exit(exitOK)
+		runCp(os.Args[2:])
+		exitFn(exitOK)
 
 	default:
-		// Could be global flags mixed (rare). Provide lenient handling:
+		// fallback: honor --help / --version anywhere
 		for _, a := range os.Args[1:] {
 			if a == "--version" {
-				showVersion = true
+				fmt.Printf("%s %s (%s/%s)\n", appName, appVersion, runtime.GOOS, runtime.GOARCH)
+				exitFn(exitOK)
 			}
 			if a == "-h" || a == "--help" {
-				showHelp = true
+				printErr(globalUsage())
+				exitFn(exitUsage)
 			}
-		}
-		if showVersion {
-			fmt.Printf("%s %s (%s/%s)\n", appName, appVersion, runtime.GOOS, runtime.GOARCH)
-			os.Exit(exitOK)
-		}
-		if showHelp {
-			printErr(globalUsage())
-			os.Exit(exitUsage)
 		}
 		printErr(globalUsage())
 		printErr(fmt.Sprintf("Unknown command: %q\n", os.Args[1]))
-		os.Exit(exitUsage)
+		exitFn(exitUsage)
 	}
 }
 
@@ -168,7 +160,7 @@ func main() {
 
 func runCp(args []string) {
 	fs := flag.NewFlagSet("cp", flag.ContinueOnError)
-	fs.SetOutput(io.Discard) // suppress default usage prints; we print our own
+	fs.SetOutput(io.Discard) // suppress default prints; we print our own
 
 	var opt options
 	var wantHelp bool
@@ -182,31 +174,26 @@ func runCp(args []string) {
 	fs.Var(&exc, "exclude", "exclude pattern (repeatable)")
 	fs.BoolVar(&wantHelp, "help", false, "show help for cp")
 
-	// Parse
 	if err := fs.Parse(args); err != nil {
-		// parsing error -> show cp usage
 		printErr(cpUsage())
 		printErr(fmt.Sprintf("Argument error: %v\n", err))
-		os.Exit(exitUsage)
+		exitFn(exitUsage)
 	}
 	opt.excludes = exc
 
 	if wantHelp {
 		printErr(cpUsage())
-		os.Exit(exitUsage)
+		exitFn(exitUsage)
 	}
 
-	// Positional args
 	rest := fs.Args()
 	if len(rest) != 2 {
 		printErr(cpUsage())
 		printErr("error: need SRC and DST\n")
-		os.Exit(exitUsage)
+		exitFn(exitUsage)
 	}
-
 	src, dst := filepath.Clean(rest[0]), filepath.Clean(rest[1])
 
-	// Validations
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -221,11 +208,9 @@ func runCp(args []string) {
 	absSrc, _ := filepath.Abs(src)
 	absDst, _ := filepath.Abs(dst)
 
-	// same path?
 	if samePath(absSrc, absDst) {
 		dieUsagef("error: SRC and DST are the same path:\n  %s\n", absSrc)
 	}
-	// prevent nesting accidents
 	if isSubpath(absDst, absSrc) {
 		dieUsagef("error: DST is inside SRC; refused to prevent recursion:\n  DST=%s inside SRC=%s\n", absDst, absSrc)
 	}
@@ -233,7 +218,6 @@ func runCp(args []string) {
 		dieUsagef("error: SRC is inside DST; refused to prevent recursion:\n  SRC=%s inside DST=%s\n", absSrc, absDst)
 	}
 
-	// Execute
 	if srcInfo.IsDir() {
 		if err := syncDir(src, dst, opt); err != nil {
 			dieRuntime(err)
@@ -257,7 +241,7 @@ func syncDir(src, dst string, opt options) error {
 	src = filepath.Clean(src)
 	dst = filepath.Clean(dst)
 
-	// forward pass: create/update
+	// forward pass
 	err := filepath.WalkDir(src, func(srcPath string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -290,7 +274,226 @@ func syncDir(src, dst string, opt options) error {
 		return err
 	}
 
-	// mirror pass: remove extras in dst
+	// mirror pass
 	if opt.mirror {
 		err = filepath.WalkDir(dst, func(dstPath string, d fs.DirEntry, walkErr error) error {
-			if walkErr !=
+			if walkErr != nil {
+				return walkErr
+			}
+			rel, _ := filepath.Rel(dst, dstPath)
+			if rel == "." {
+				return nil
+			}
+			if shouldExclude(rel, d, opt.excludes) {
+				if opt.verbose {
+					logf("mirror-skip (excluded): %s", rel)
+				}
+				if d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			srcPath := filepath.Join(src, rel)
+			_, err := os.Lstat(srcPath)
+			if err == nil {
+				return nil
+			}
+			if os.IsNotExist(err) {
+				if d.IsDir() {
+					return removePath(dstPath, true, opt)
+				}
+				return removePath(dstPath, false, opt)
+			}
+			return err
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureDir(path string, opt options) error {
+	if opt.dryRun {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			logf("[DRY] MKDIR %s", path)
+		}
+		return nil
+	}
+	return os.MkdirAll(path, 0o755)
+}
+
+func syncFile(srcPath, dstPath string, srcInfo fs.FileInfo, opt options) error {
+	if dstInfo, err := os.Stat(dstPath); err == nil && dstInfo.Mode().IsRegular() {
+		same, err := sameFile(srcPath, dstPath, srcInfo, dstInfo, opt)
+		if err != nil {
+			return err
+		}
+		if same {
+			if opt.verbose {
+				logf("skip (same): %s", dstPath)
+			}
+			return nil
+		}
+	}
+	return copyOneFile(srcPath, dstPath, opt)
+}
+
+func copyOneFile(srcPath, dstPath string, opt options) error {
+	if opt.dryRun {
+		logf("[DRY] COPY %s -> %s", srcPath, dstPath)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return err
+	}
+
+	sf, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer sf.Close()
+
+	si, err := sf.Stat()
+	if err != nil {
+		return err
+	}
+
+	df, err := os.OpenFile(dstPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, si.Mode())
+	if err != nil {
+		return err
+	}
+	buf := bufio.NewWriterSize(df, 2<<20)
+	if _, err := io.Copy(buf, sf); err != nil {
+		_ = df.Close()
+		return err
+	}
+	if err := buf.Flush(); err != nil {
+		_ = df.Close()
+		return err
+	}
+	if err := df.Close(); err != nil {
+		return err
+	}
+
+	mt := si.ModTime()
+	return os.Chtimes(dstPath, mt, mt)
+}
+
+func removePath(path string, isDir bool, opt options) error {
+	if opt.dryRun {
+		if isDir {
+			logf("[DRY] RMDIR %s", path)
+		} else {
+			logf("[DRY] DEL   %s", path)
+		}
+		return nil
+	}
+	if isDir {
+		return os.RemoveAll(path)
+	}
+	return os.Remove(path)
+}
+
+func sameFile(srcPath, dstPath string, si, di fs.FileInfo, opt options) (bool, error) {
+	if si.Size() == di.Size() && absDuration(si.ModTime().Sub(di.ModTime())) <= time.Second {
+		if !opt.checksum {
+			return true, nil
+		}
+		sh1, err := sha1sum(srcPath)
+		if err != nil {
+			return false, err
+		}
+		dh1, err := sha1sum(dstPath)
+		if err != nil {
+			return false, err
+		}
+		return sh1 == dh1, nil
+	}
+	if opt.checksum {
+		sh1, err := sha1sum(srcPath)
+		if err != nil {
+			return false, err
+		}
+		dh1, err := sha1sum(dstPath)
+		if err != nil {
+			return false, err
+		}
+		return sh1 == dh1, nil
+	}
+	return false, nil
+}
+
+func sha1sum(path string) ([20]byte, error) {
+	var zero [20]byte
+	f, err := os.Open(path)
+	if err != nil {
+		return zero, err
+	}
+	defer f.Close()
+	h := sha1.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return zero, err
+	}
+	var out [20]byte
+	copy(out[:], h.Sum(nil))
+	return out, nil
+}
+
+/* =========================
+        HELPERS/UTIL
+========================= */
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+func shouldExclude(rel string, d fs.DirEntry, patterns []string) bool {
+	base := filepath.Base(rel)
+	for _, p := range patterns {
+		if match, _ := filepath.Match(p, base); match {
+			return true
+		}
+		if p == rel || strings.Contains(rel, string(os.PathSeparator)+p+string(os.PathSeparator)) {
+			return true
+		}
+		if strings.HasPrefix(rel, p+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSubpath(child, parent string) bool {
+	c := strings.ToLower(filepath.Clean(child))
+	p := strings.ToLower(filepath.Clean(parent))
+	if c == p {
+		return false
+	}
+	rel, err := filepath.Rel(p, c)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+func samePath(a, b string) bool {
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+}
+
+func logf(format string, args ...any) { fmt.Printf(format+"\n", args...) }
+func logAlways(msg string)            { fmt.Println(msg) }
+
+func dieRuntime(err error) {
+	printErr(fmt.Sprintf("error: %v\n", err))
+	exitFn(exitRuntimeError)
+}
+
+func dieUsagef(format string, a ...any) {
+	printErr(cpUsage())
+	printErr(fmt.Sprintf(format, a...))
+	exitFn(exitUsage)
+}

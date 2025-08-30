@@ -1,10 +1,11 @@
- -5step by step 
+メモ
+
+作業場所：
 cd E:\projects\syncdir
 go mod init syncdir
 
-保存したらビルド：
+ビルド：
 go build -o syncdir.exe
-
 
 “安全第一”ドライランをやってみる
 .\syncdir.exe cp -r --dry-run "E:\dotinstall" "C:\Users\user1\dotinstall"
@@ -25,3 +26,22 @@ go build -o syncdir.exe
 ]
 
 .\syncdir.exe cp -r --exclude ".git" --exclude "*.tmp" --verbose "E:\dotinstall" "C:\Users\user1\dotinstall]
+
+
+cd E:\projects\syncdir
+
+# テスト実行（詳細表示）
+go test -v
+
+# 正しい実行方法（PowerShell）
+go test ./... -coverprofile="coverage.out"
+# 関数ごとのカバレッジ一覧
+go tool cover -func="coverage.out"
+
+# HTMLレポートをブラウザで確認
+go tool cover -html="coverage.out"
+
+
+
+# HTMLで開いて確認（ブラウザで開けます）
+go tool cover -html=coverage.out
