@@ -78,3 +78,10 @@ jobs:
             test.log
             coverage.out
             coverage.html
+       - name: Go Fmt check
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "gofmt needed:"
+            gofmt -l .
+            exit 1
+          fi
