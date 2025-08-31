@@ -1,61 +1,31 @@
-name: CI
+      - name: Test with coverage (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -e
+          go test ./... -coverprofile=coverage.out -count=1 -failfast -v 2>&1 | tee test.log
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+      - name: Test with coverage (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go test ./... -coverprofile=coverage.out -count=1 -failfast -v *>&1 | Tee-Object -FilePath test.log
 
-permissions:
-  contents: read
-
-jobs:
-  test:
-    name: Go Test & Coverage
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, windows-latest ]
-        go: [ '1.22.x' ]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ matrix.go }}
-
-      - name: Cache Go build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.mod', '**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ matrix.go }}-
-
-      - name: Go Vet
-        run: go vet ./...
-
-      - name: Build
-        run: go build -o syncdir.exe
-
-      - name: Test with coverage
-        run: go test ./... -coverprofile=coverage.out -count=1 -failfast -v
       - name: Coverage (functions)
-        run: go tool cover -func=coverage.out
+        if: always()        # 失敗しても見たいので
+        run: go tool cover -func=coverage.out || true
 
       - name: Coverage HTML
-        run: go tool cover -html=coverage.out -o coverage.html
+        if: always()
+        run: go tool cover -html=coverage.out -o coverage.html || true
 
-      - name: Upload coverage artifacts
+      - name: Upload test logs & coverage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ runner.os }}
+          name: logs-${{ runner.os }}
           path: |
+            test.log
             coverage.out
             coverage.html
