@@ -1,15 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
-	"errors"
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+	"errors"
 )
 
 // ---------- helpers ----------
@@ -146,7 +146,7 @@ func TestSameFileAndCopyOneFile(t *testing.T) {
 	}
 
 	// 中身を更新 → same=false
-	time.Sleep(1100 * time.Millisecond) // mtime±1sトレランスを超えさせる
+	time.Sleep(2 * time.Second) // CIでの時間解像度/負荷に余裕を持たせる
 	writeFile(t, src, []byte("abcd"))
 	si, _ = os.Stat(src)
 	di, _ = os.Stat(dst)
@@ -217,172 +217,171 @@ func TestEnsureDir_DryRun(t *testing.T) {
 }
 
 func TestMain_HelpAndVersion(t *testing.T) {
-	// --help は usage を出して exit 2
-	code, errOut := runWithIntercept(t, []string{"--help"}, func() { main() })
-	if code != exitUsage || !strings.Contains(errOut, "Usage:") {
-		t.Fatalf("--help: want code=%d and usage in stderr, got code=%d, stderr=%q", exitUsage, code, errOut)
-	}
+    // --help は usage を出して exit 2
+    code, errOut := runWithIntercept(t, []string{"--help"}, func() { main() })
+    if code != exitUsage || !strings.Contains(errOut, "Usage:") {
+        t.Fatalf("--help: want code=%d and usage in stderr, got code=%d, stderr=%q", exitUsage, code, errOut)
+    }
 
-	// version は exit 0（stderr ではなく stdout に出るのでコードのみ検査）
-	code, _ = runWithIntercept(t, []string{"version"}, func() { main() })
-	if code != exitOK {
-		t.Fatalf("version: want code=%d, got %d", exitOK, code)
-	}
+    // version は exit 0（stderr ではなく stdout に出るのでコードのみ検査）
+    code, _ = runWithIntercept(t, []string{"version"}, func() { main() })
+    if code != exitOK {
+        t.Fatalf("version: want code=%d, got %d", exitOK, code)
+    }
 
-	// 未知コマンドは usage + Unknown command で exit 2
-	code, errOut = runWithIntercept(t, []string{"wat"}, func() { main() })
-	if code != exitUsage || !strings.Contains(errOut, "Unknown command") {
-		t.Fatalf("wat: want code=%d and 'Unknown command', got code=%d, stderr=%q", exitUsage, code, errOut)
-	}
+    // 未知コマンドは usage + Unknown command で exit 2
+    code, errOut = runWithIntercept(t, []string{"wat"}, func() { main() })
+    if code != exitUsage || !strings.Contains(errOut, "Unknown command") {
+        t.Fatalf("wat: want code=%d and 'Unknown command', got code=%d, stderr=%q", exitUsage, code, errOut)
+    }
 }
 
 func TestRunCp_Errors_ShowUsage(t *testing.T) {
-	// 引数不足
-	code, errOut := runWithIntercept(t, nil, func() { runCp([]string{}) })
-	if code != exitUsage || !strings.Contains(errOut, "need SRC and DST") {
-		t.Fatalf("need SRC/DST: code=%d stderr=%q", code, errOut)
-	}
+    // 引数不足
+    code, errOut := runWithIntercept(t, nil, func() { runCp([]string{}) })
+    if code != exitUsage || !strings.Contains(errOut, "need SRC and DST") {
+        t.Fatalf("need SRC/DST: code=%d stderr=%q", code, errOut)
+    }
 
-	tmp := t.TempDir()
-	src := filepath.Join(tmp, "srcdir")
-	dst := filepath.Join(tmp, "dstdir")
-	_ = os.MkdirAll(src, 0o755)
+    tmp := t.TempDir()
+    src := filepath.Join(tmp, "srcdir")
+    dst := filepath.Join(tmp, "dstdir")
+    _ = os.MkdirAll(src, 0o755)
 
-	// -r なしでディレクトリ
-	code, errOut = runWithIntercept(t, nil, func() { runCp([]string{src, dst}) })
-	if code != exitUsage || !strings.Contains(errOut, "specify -r") {
-		t.Fatalf("dir without -r: code=%d stderr=%q", code, errOut)
-	}
+    // -r なしでディレクトリ
+    code, errOut = runWithIntercept(t, nil, func() { runCp([]string{src, dst}) })
+    if code != exitUsage || !strings.Contains(errOut, "specify -r") {
+        t.Fatalf("dir without -r: code=%d stderr=%q", code, errOut)
+    }
 
-	// 同一パス
-	code, errOut = runWithIntercept(t, nil, func() { runCp([]string{"-r", src, src}) })
-	if code != exitUsage || !strings.Contains(errOut, "same path") {
-		t.Fatalf("same path: code=%d stderr=%q", code, errOut)
-	}
+    // 同一パス
+    code, errOut = runWithIntercept(t, nil, func() { runCp([]string{"-r", src, src}) })
+    if code != exitUsage || !strings.Contains(errOut, "same path") {
+        t.Fatalf("same path: code=%d stderr=%q", code, errOut)
+    }
 
-	// 入れ子（DSTがSRCの内側）
-	inner := filepath.Join(src, "inner")
-	code, errOut = runWithIntercept(t, nil, func() { runCp([]string{"-r", src, inner}) })
-	if code != exitUsage || !strings.Contains(errOut, "DST is inside SRC") {
-		t.Fatalf("nest: code=%d stderr=%q", code, errOut)
-	}
+    // 入れ子（DSTがSRCの内側）
+    inner := filepath.Join(src, "inner")
+    code, errOut = runWithIntercept(t, nil, func() { runCp([]string{"-r", src, inner}) })
+    if code != exitUsage || !strings.Contains(errOut, "DST is inside SRC") {
+        t.Fatalf("nest: code=%d stderr=%q", code, errOut)
+    }
 }
 func TestSameFile_ChecksumEqual(t *testing.T) {
 	dir := t.TempDir()
-	a := filepath.Join(dir, "a.txt")
-	b := filepath.Join(dir, "b.txt")
+	a := filepath.Join(dir,"a.txt")
+	b := filepath.Join(dir,"b.txt")
 	os.WriteFile(a, []byte("same"), 0o644)
 	os.WriteFile(b, []byte("same"), 0o644)
 
-	si, _ := os.Stat(a)
-	bi, _ := os.Stat(b)
+	si,_ := os.Stat(a); bi,_ := os.Stat(b)
 	// 時刻がズレていても checksum なら true を期待
-	same, err := sameFile(a, b, si, bi, options{checksum: true})
+	same, err := sameFile(a, b, si, bi, options{checksum:true})
 	if err != nil || !same {
 		t.Fatalf("checksum equal should be true, err=%v", err)
 	}
 }
 func runWithIntercept(t *testing.T, args []string, f func()) (code int, errOut string) {
-	t.Helper()
+    t.Helper()
 
-	oldExit, oldErr, oldArgs := exitFn, stderr, os.Args
-	defer func() { exitFn, stderr, os.Args = oldExit, oldErr, oldArgs }()
+    oldExit, oldErr, oldArgs := exitFn, stderr, os.Args
+    defer func() { exitFn, stderr, os.Args = oldExit, oldErr, oldArgs }()
 
-	var buf bytes.Buffer
-	stderr = &buf
-	exitFn = func(c int) { panic(c) }
-	os.Args = append([]string{appName}, args...)
+    var buf bytes.Buffer
+    stderr = &buf
+    exitFn = func(c int) { panic(c) }
+    os.Args = append([]string{appName}, args...)
 
-	defer func() {
-		if r := recover(); r != nil {
-			if c, ok := r.(int); ok {
-				code = c
-			} else {
-				t.Fatalf("unexpected panic: %#v", r)
-			}
-		}
-		errOut = buf.String()
-	}()
+    defer func() {
+        if r := recover(); r != nil {
+            if c, ok := r.(int); ok {
+                code = c
+            } else {
+                t.Fatalf("unexpected panic: %#v", r)
+            }
+        }
+        errOut = buf.String()
+    }()
 
-	f() // ここで main() や runCp(...) を直接呼ぶ
-	return
+    f() // ここで main() や runCp(...) を直接呼ぶ
+    return
 }
 func TestHelp_TopicCp(t *testing.T) {
-	code, errOut := runWithIntercept(t, []string{"help", "cp"}, func() { main() })
-	if code != exitUsage || !strings.Contains(errOut, "cp - copy/sync") {
-		t.Fatalf("help cp: code=%d stderr=%q", code, errOut)
-	}
+    code, errOut := runWithIntercept(t, []string{"help", "cp"}, func() { main() })
+    if code != exitUsage || !strings.Contains(errOut, "cp - copy/sync") {
+        t.Fatalf("help cp: code=%d stderr=%q", code, errOut)
+    }
 }
 func TestCp_HelpFlag(t *testing.T) {
-	code, errOut := runWithIntercept(t, nil, func() { runCp([]string{"--help"}) })
-	if code != exitUsage || !strings.Contains(errOut, "cp - copy/sync") {
-		t.Fatalf("cp --help: code=%d stderr=%q", code, errOut)
-	}
+    code, errOut := runWithIntercept(t, nil, func() { runCp([]string{"--help"}) })
+    if code != exitUsage || !strings.Contains(errOut, "cp - copy/sync") {
+        t.Fatalf("cp --help: code=%d stderr=%q", code, errOut)
+    }
 }
 func TestMirror_RemoveDir_And_SkipExcludedVerbose(t *testing.T) {
-	src := t.TempDir()
-	dst := t.TempDir()
+    src := t.TempDir()
+    dst := t.TempDir()
 
-	// SRC: a/keep.txt のみ
-	writeFile(t, filepath.Join(src, "a", "keep.txt"), []byte("k"))
+    // SRC: a/keep.txt のみ
+    writeFile(t, filepath.Join(src, "a", "keep.txt"), []byte("k"))
 
-	// DST: 余分な dir を用意（mirror で消えることを期待）
-	writeFile(t, filepath.Join(dst, "b", "extra.txt"), []byte("x"))
+    // DST: 余分な dir を用意（mirror で消えることを期待）
+    writeFile(t, filepath.Join(dst, "b", "extra.txt"), []byte("x"))
 
-	// DST: 除外対象も用意（node_modules）→ mirror時に "mirror-skip (excluded)" の行が実行される
-	writeFile(t, filepath.Join(dst, "node_modules", "stay.txt"), []byte("s"))
+    // DST: 除外対象も用意（node_modules）→ mirror時に "mirror-skip (excluded)" の行が実行される
+    writeFile(t, filepath.Join(dst, "node_modules", "stay.txt"), []byte("s"))
 
-	opt := options{
-		recursive: true,
-		mirror:    true,
-		dryRun:    false,
-		verbose:   true,                     // ← logf の行を実行させる
-		excludes:  []string{"node_modules"}, // ← mirror-skip (excluded) を踏む
-	}
-	if err := syncDir(src, dst, opt); err != nil {
-		t.Fatalf("syncDir mirror: %v", err)
-	}
+    opt := options{
+        recursive: true,
+        mirror:    true,
+        dryRun:    false,
+        verbose:   true,                      // ← logf の行を実行させる
+        excludes:  []string{"node_modules"},  // ← mirror-skip (excluded) を踏む
+    }
+    if err := syncDir(src, dst, opt); err != nil {
+        t.Fatalf("syncDir mirror: %v", err)
+    }
 
-	// b/ は削除される
-	if _, err := os.Stat(filepath.Join(dst, "b")); !os.IsNotExist(err) {
-		t.Fatalf("mirror should remove extra dir 'b'")
-	}
-	// 除外は残る
-	if _, err := os.Stat(filepath.Join(dst, "node_modules", "stay.txt")); err != nil {
-		t.Fatalf("excluded path should remain: %v", err)
-	}
+    // b/ は削除される
+    if _, err := os.Stat(filepath.Join(dst, "b")); !os.IsNotExist(err) {
+        t.Fatalf("mirror should remove extra dir 'b'")
+    }
+    // 除外は残る
+    if _, err := os.Stat(filepath.Join(dst, "node_modules", "stay.txt")); err != nil {
+        t.Fatalf("excluded path should remain: %v", err)
+    }
 }
 func TestRemovePath_FileAndDir_RealDelete(t *testing.T) {
-	base := t.TempDir()
+    base := t.TempDir()
 
-	// file
-	f := filepath.Join(base, "x.txt")
-	writeFile(t, f, []byte("x"))
-	if err := removePath(f, false, options{dryRun: false}); err != nil {
-		t.Fatalf("remove file: %v", err)
-	}
-	if _, err := os.Stat(f); !os.IsNotExist(err) {
-		t.Fatalf("file should be removed")
-	}
+    // file
+    f := filepath.Join(base, "x.txt")
+    writeFile(t, f, []byte("x"))
+    if err := removePath(f, false, options{dryRun: false}); err != nil {
+        t.Fatalf("remove file: %v", err)
+    }
+    if _, err := os.Stat(f); !os.IsNotExist(err) {
+        t.Fatalf("file should be removed")
+    }
 
-	// dir
-	d := filepath.Join(base, "d")
-	writeFile(t, filepath.Join(d, "y.txt"), []byte("y"))
-	if err := removePath(d, true, options{dryRun: false}); err != nil {
-		t.Fatalf("remove dir: %v", err)
-	}
-	if _, err := os.Stat(d); !os.IsNotExist(err) {
-		t.Fatalf("dir should be removed")
-	}
+    // dir
+    d := filepath.Join(base, "d")
+    writeFile(t, filepath.Join(d, "y.txt"), []byte("y"))
+    if err := removePath(d, true, options{dryRun: false}); err != nil {
+        t.Fatalf("remove dir: %v", err)
+    }
+    if _, err := os.Stat(d); !os.IsNotExist(err) {
+        t.Fatalf("dir should be removed")
+    }
 }
 func TestDieHelpers(t *testing.T) {
-	code, errOut := runWithIntercept(t, nil, func() { dieUsagef("oops %d", 1) })
-	if code != exitUsage || !strings.Contains(errOut, "cp - copy/sync") || !strings.Contains(errOut, "oops 1") {
-		t.Fatalf("dieUsagef: code=%d stderr=%q", code, errOut)
-	}
+    code, errOut := runWithIntercept(t, nil, func() { dieUsagef("oops %d", 1) })
+    if code != exitUsage || !strings.Contains(errOut, "cp - copy/sync") || !strings.Contains(errOut, "oops 1") {
+        t.Fatalf("dieUsagef: code=%d stderr=%q", code, errOut)
+    }
 
-	code, errOut = runWithIntercept(t, nil, func() { dieRuntime(errors.New("boom")) })
-	if code != exitRuntimeError || !strings.Contains(errOut, "boom") {
-		t.Fatalf("dieRuntime: code=%d stderr=%q", code, errOut)
-	}
+    code, errOut = runWithIntercept(t, nil, func() { dieRuntime(errors.New("boom")) })
+    if code != exitRuntimeError || !strings.Contains(errOut, "boom") {
+        t.Fatalf("dieRuntime: code=%d stderr=%q", code, errOut)
+    }
 }
