@@ -25,11 +25,12 @@ Highlights:
 */
 
 var (
-	exitFn           = func(code int) { os.Exit(code) }
-	stderr io.Writer = os.Stderr // ★ io.Writer にする（重要）
+    exitFn = func(code int) { os.Exit(code) }
+    stderr io.Writer = os.Stderr   // ★ io.Writer にする（重要）
 )
 
 func printErr(s string) { _, _ = fmt.Fprint(stderr, s) }
+
 
 const (
 	appName    = "syncdir"
@@ -298,13 +299,14 @@ func syncDir(src, dst string, opt options) error {
 			if err == nil {
 				return nil
 			}
-			if os.IsNotExist(err) {
-				if d.IsDir() {
-					return removePath(dstPath, true, opt)
+			if d.IsDir() {
+				// 親ディレクトリを削除した場合、WalkDir がその配下に降りようとして失敗するのを防ぐ
+				if rmErr := removePath(dstPath, true, opt); rmErr != nil {
+					return rmErr
 				}
-				return removePath(dstPath, false, opt)
+				return fs.SkipDir
 			}
-			return err
+			return removePath(dstPath, false, opt)
 		})
 		if err != nil {
 			return err
@@ -485,7 +487,7 @@ func samePath(a, b string) bool {
 }
 
 func logf(format string, args ...any) { fmt.Printf(format+"\n", args...) }
-func logAlways(msg string)            { fmt.Println(msg) }
+func logAlways(msg string)           { fmt.Println(msg) }
 
 func dieRuntime(err error) {
 	printErr(fmt.Sprintf("error: %v\n", err))
